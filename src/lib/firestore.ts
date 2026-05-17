@@ -162,6 +162,23 @@ export function subscribeToBookings(
   });
 }
 
+export function subscribeToAvailableJobs(callback: (bookings: Booking[]) => void) {
+  const q = query(
+    collection(db, 'bookings'),
+    where('status', 'in', ['requested', 'assigned']),
+    orderBy('createdAt', 'desc'),
+    limit(10)
+  );
+  return onSnapshot(q, (snap) => {
+    const bookings = snap.docs.map((d) => ({
+      ...d.data(),
+      id: d.id,
+      createdAt: d.data().createdAt?.toDate?.() || new Date(),
+    })) as Booking[];
+    callback(bookings);
+  });
+}
+
 // ===== Notifications =====
 
 export async function createNotification(notification: Omit<Notification, 'id'>): Promise<string> {

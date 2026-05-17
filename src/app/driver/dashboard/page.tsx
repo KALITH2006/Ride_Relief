@@ -9,8 +9,9 @@ import {
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
 import { useDriverStatsStore } from '@/stores/driverStatsStore';
-import { updateDriverStatsOnCompletion } from '@/lib/firestore';
+import { updateDriverStatsOnCompletion, subscribeToAvailableJobs, updateBooking } from '@/lib/firestore';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import type { Booking } from '@/lib/types';
 import GoogleMap, { type MapMarkerData } from '@/components/maps/GoogleMap';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -19,19 +20,7 @@ import Avatar from '@/components/ui/Avatar';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
-// Demo incoming jobs
-const demoJobs = [
-  {
-    id: 'j1', customerName: 'Priya Sharma', customerPhone: '+91 99876 54321',
-    serviceType: 'acting_driver', pickup: { address: '12th Main, Indiranagar, Bangalore', lat: 12.97, lng: 77.64 },
-    drop: { address: 'Whitefield, Bangalore', lat: 12.97, lng: 77.75 }, distance: 14.2, estimatedFare: 349, isSOS: false,
-  },
-  {
-    id: 'j2', customerName: 'Amit Patel', customerPhone: '+91 98765 12345',
-    serviceType: 'emergency', pickup: { address: 'Koramangala 4th Block, Bangalore', lat: 12.93, lng: 77.62 },
-    drop: null, distance: 3.5, estimatedFare: 199, isSOS: true,
-  },
-];
+// Real-time integration replaces demoJobs
 
 export default function DriverDashboard() {
   const { profile, updateProfile } = useAuthStore();
@@ -39,7 +28,8 @@ export default function DriverDashboard() {
   const { stats, startListening, stopListening } = useDriverStatsStore();
   
   const [isOnline, setIsOnline] = useState(false);
-  const [activeJob, setActiveJob] = useState<string | null>(null);
+  const [availableJobs, setAvailableJobs] = useState<Booking[]>([]);
+  const [activeJob, setActiveJob] = useState<Booking | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('');
   const [otpInput, setOtpInput] = useState('');
   const [otpError, setOtpError] = useState(false);
@@ -50,7 +40,22 @@ export default function DriverDashboard() {
     if (profile?.uid) {
       startListening(profile.uid);
     }
-    return () => stopListening();
+    const unsub = subscribeToAvailableJobs((bookings) => {
+      // Filter out bookings that are assigned to someone else
+      const validJobs = bookings.filter(b => b.status === 'requested' || (b.status === 'assigned' && b.driverId === profile?.uid));
+      setAvailableJobs(validJobs);
+      
+      // If we have an active job, update its state
+      if (activeJob) {
+        const updated = validJobs.find(j => j.id === activeJob.id);
+        if (updated) setActiveJob(updated);
+      }
+    });
+
+    return () => {
+      stopListening();
+      unsub();
+    };
   }, [profile, startListening, stopListening]);
   
   // Fetch accurate location immediately
@@ -76,30 +81,33 @@ export default function DriverDashboard() {
   // Stop tracking on unmount
   useEffect(() => { return () => { stopTracking(); }; }, [stopTracking]);
 
-  const acceptJob = (jobId: string) => {
-    setActiveJob(jobId);
+  const acceptJob = async (job: Booking) => {
+    setActiveJob(job);
     setJobStatus('assigned');
+    if (profile) {
+      await updateBooking(job.id, { status: 'assigned', driverId: profile.uid, driverName: profile.name });
+    }
     toast.success('Job accepted! Navigate to customer.');
   };
 
-  const updateJobStatus = (status: string) => {
+  const updateJobStatus = async (status: string) => {
+    if (!activeJob) return;
+
     if (status === 'completed') {
-      if (otpInput.length !== 6) {
+      if (!otpInput || otpInput !== activeJob.otp) {
         setOtpError(true);
-        toast.error('Please enter a valid 6-digit OTP from the customer');
+        toast.error('Incorrect OTP. Please ask the customer for the correct 6-digit pin.');
         return;
       }
-      // Real app: await verifyOTP(activeJob, otpInput);
       
-      const completedJob = demoJobs.find(j => j.id === activeJob);
-      if (completedJob) {
-        if (profile && !profile.uid.startsWith('demo_')) {
-          updateDriverStatsOnCompletion(profile.uid, completedJob.estimatedFare, completedJob.isSOS);
-        } else {
-          setTodayEarnings(prev => prev + completedJob.estimatedFare);
-          setTodayTrips(prev => prev + 1);
-        }
+      if (profile && !profile.uid.startsWith('demo_')) {
+        await updateDriverStatsOnCompletion(profile.uid, activeJob.amount, activeJob.isSOS);
+      } else {
+        setTodayEarnings(prev => prev + activeJob.amount);
+        setTodayTrips(prev => prev + 1);
       }
+
+      await updateBooking(activeJob.id, { status: 'completed', otpVerified: true, completedAt: new Date() });
 
       setOtpError(false);
       toast.success('OTP Verified & Job completed! 🎉');
@@ -108,6 +116,7 @@ export default function DriverDashboard() {
       setOtpInput('');
     } else {
       setJobStatus(status);
+      await updateBooking(activeJob.id, { status: status as any });
       toast(`Status updated: ${status.replace('_', ' ')}`);
     }
   };
@@ -120,22 +129,19 @@ export default function DriverDashboard() {
     mapMarkers.push({ id: 'me', position: myLocation, title: 'Your Location', role: 'driver', info: 'You are here' });
   }
   if (isOnline && !activeJob) {
-    demoJobs.forEach((job) => {
+    availableJobs.filter(j => j.status === 'requested').forEach((job) => {
       mapMarkers.push({
         id: job.id, position: { lat: job.pickup.lat, lng: job.pickup.lng },
-        title: job.customerName, role: job.isSOS ? 'sos' : 'customer',
-        info: `${job.pickup.address} • ${job.distance}km`,
+        title: job.userName || 'Customer', role: job.isSOS ? 'sos' : 'customer',
+        info: `${job.pickup.address}`,
       });
     });
   }
   if (activeJob) {
-    const job = demoJobs.find((j) => j.id === activeJob);
-    if (job) {
-      mapMarkers.push({
-        id: 'customer-active', position: { lat: job.pickup.lat, lng: job.pickup.lng },
-        title: job.customerName, role: job.isSOS ? 'sos' : 'customer', info: job.pickup.address,
-      });
-    }
+    mapMarkers.push({
+      id: 'customer-active', position: { lat: activeJob.pickup.lat, lng: activeJob.pickup.lng },
+      title: activeJob.userName || 'Customer', role: activeJob.isSOS ? 'sos' : 'customer', info: activeJob.pickup.address,
+    });
   }
 
   return (
@@ -169,9 +175,9 @@ export default function DriverDashboard() {
             fitMarkers={mapMarkers.length > 1}
             height="250px"
             zoom={13}
-            showRoute={!!activeJob && mapMarkers.length > 1}
+            showRoute={!!activeJob}
             routeOrigin={myLocation || undefined}
-            routeDestination={activeJob ? (() => { const j = demoJobs.find((jj) => jj.id === activeJob); return j ? { lat: j.pickup.lat, lng: j.pickup.lng } : undefined; })() : undefined}
+            routeDestination={activeJob ? { lat: activeJob.pickup.lat, lng: activeJob.pickup.lng } : undefined}
             className="rounded-2xl"
           />
         </motion.div>
@@ -227,16 +233,14 @@ export default function DriverDashboard() {
               <Badge status={jobStatus === 'assigned' ? 'assigned' : jobStatus === 'on_the_way' ? 'on_the_way' : 'arrived'} />
             </div>
             
-            {activeJob && (() => {
-              const job = demoJobs.find(j => j.id === activeJob);
-              return job && (
-                <div className="mb-3 space-y-1">
-                  <p className="text-xs text-muted font-mono">ID: {job.id.toUpperCase()}</p>
-                  <p className="text-sm font-medium text-foreground">{job.serviceType === 'acting_driver' ? 'Acting Driver' : job.serviceType === 'emergency' ? 'Emergency SOS' : job.serviceType}</p>
-                  <div className="flex items-center gap-1 text-xs text-muted mt-1"><MapPin size={12}/> {job.pickup.address}</div>
-                </div>
-              );
-            })()}
+            {activeJob && (
+              <div className="mb-3 space-y-1">
+                <p className="text-xs text-muted font-mono">ID: {activeJob.id.slice(0, 8).toUpperCase()}</p>
+                <p className="text-sm font-medium text-foreground capitalize">{activeJob.serviceType.replace('_', ' ')}</p>
+                <div className="flex items-center gap-1 text-xs text-muted mt-1"><MapPin size={12}/> {activeJob.pickup.address}</div>
+                {activeJob.drop && <div className="flex items-center gap-1 text-xs text-muted"><MapPin size={12}/> Drop: {activeJob.drop.address}</div>}
+              </div>
+            )}
 
             {jobStatus === 'arrived' && (
               <div className="mb-3 p-3 bg-primary/5 border border-primary/20 rounded-xl">
@@ -266,7 +270,7 @@ export default function DriverDashboard() {
         <div>
           <h3 className="text-lg font-bold text-foreground mb-3">Incoming Requests</h3>
           <div className="space-y-3">
-            {demoJobs.map((job) => (
+            {availableJobs.filter(j => j.status === 'requested').map((job) => (
               <motion.div key={job.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
                 <Card variant="elevated" className={job.isSOS ? 'border-red-500/50 bg-red-500/5' : ''}>
                   {job.isSOS && (<div className="flex items-center gap-1 mb-2"><Badge status="sos" size="md" /></div>)}
@@ -274,23 +278,26 @@ export default function DriverDashboard() {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">#</div>
                       <div>
-                        <p className="font-mono font-semibold text-foreground text-sm uppercase">{job.id}</p>
-                        <p className="text-xs text-muted">{job.distance} km away • {Math.round(job.distance * 2.5)} min ETA</p>
+                        <p className="font-mono font-semibold text-foreground text-sm uppercase">{job.id.slice(0, 6)}</p>
+                        <p className="text-xs text-muted capitalize">{job.serviceType.replace('_', ' ')}</p>
                       </div>
                     </div>
-                    <p className="text-lg font-bold text-primary">{formatCurrency(job.estimatedFare)}</p>
+                    <p className="text-lg font-bold text-primary">{formatCurrency(job.amount)}</p>
                   </div>
                   <div className="space-y-1.5 mb-3">
-                    <div className="flex items-center gap-2 text-xs"><div className="w-2 h-2 rounded-full bg-emerald-500" /><span className="text-muted">{job.pickup.address}</span></div>
-                    {job.drop && (<div className="flex items-center gap-2 text-xs"><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-muted">{job.drop.address}</span></div>)}
+                    <div className="flex items-center gap-2 text-xs"><div className="w-2 h-2 rounded-full bg-emerald-500" /><span className="text-muted line-clamp-1">{job.pickup.address}</span></div>
+                    {job.drop && (<div className="flex items-center gap-2 text-xs"><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-muted line-clamp-1">{job.drop.address}</span></div>)}
                   </div>
                   <div className="flex gap-2">
                     <Button variant="danger" size="sm" className="flex-1" onClick={declineJob}><XCircle size={14} /> Decline</Button>
-                    <Button size="sm" className="flex-1" onClick={() => acceptJob(job.id)}><CheckCircle size={14} /> Accept</Button>
+                    <Button size="sm" className="flex-1" onClick={() => acceptJob(job)}><CheckCircle size={14} /> Accept</Button>
                   </div>
                 </Card>
               </motion.div>
             ))}
+            {availableJobs.filter(j => j.status === 'requested').length === 0 && (
+              <p className="text-sm text-muted text-center py-4">No active requests nearby.</p>
+            )}
           </div>
         </div>
       )}
