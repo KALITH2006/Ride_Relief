@@ -39,6 +39,8 @@ export default function DriverDashboard() {
   const [jobStatus, setJobStatus] = useState<string>('');
   const [otpInput, setOtpInput] = useState('');
   const [otpError, setOtpError] = useState(false);
+  const [todayEarnings, setTodayEarnings] = useState(1240);
+  const [todayTrips, setTodayTrips] = useState(5);
   
   // Fetch accurate location immediately
   const { latitude, longitude } = useGeolocation(true);
@@ -77,6 +79,13 @@ export default function DriverDashboard() {
         return;
       }
       // Real app: await verifyOTP(activeJob, otpInput);
+      
+      const completedJob = demoJobs.find(j => j.id === activeJob);
+      if (completedJob) {
+        setTodayEarnings(prev => prev + completedJob.estimatedFare);
+        setTodayTrips(prev => prev + 1);
+      }
+
       setOtpError(false);
       toast.success('OTP Verified & Job completed! 🎉');
       setActiveJob(null);
@@ -89,9 +98,6 @@ export default function DriverDashboard() {
   };
 
   const declineJob = () => { toast('Job declined.', { icon: '✖️' }); };
-
-  const todayEarnings = 1240;
-  const todayTrips = 5;
 
   // Build map markers
   const mapMarkers: MapMarkerData[] = [];
