@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "868605201369",
+    "project_id": "ride-relief",
+    "storage_bucket": "ride-relief.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:868605201369:android:1ead4bba7634e05dc5a7c8",
+        "android_client_info": {
+          "package_name": "com.riderelief.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqoPW8tBi-lZfk62xY2vpjUutDsEDQtb0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
