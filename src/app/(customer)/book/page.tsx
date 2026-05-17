@@ -31,7 +31,7 @@ function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { profile } = useAuthStore();
-  const { setServiceType, setPickup, setDrop, serviceType, pickup, drop, estimatedFare, confirmBooking, isBooking } = useBookingStore();
+  const { setServiceType, setPickup, setDrop, serviceType, pickup, drop, estimatedFare, priceBreakdown, confirmBooking, isBooking } = useBookingStore();
   const { latitude, longitude } = useGeolocation();
 
   const [step, setStep] = useState<Step>('service');
@@ -258,9 +258,43 @@ function BookingPageContent() {
                   )}
                 </div>
                 <hr className="border-border" />
+                
+                {/* Price Breakdown */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted">Base Fare</span>
+                    <span className="font-medium text-foreground">{formatCurrency(priceBreakdown?.basePrice || estimatedFare)}</span>
+                  </div>
+                  {priceBreakdown && priceBreakdown.weatherSurge > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted">Weather Surge</span>
+                      <span className="font-medium text-amber-500">+{formatCurrency(priceBreakdown.weatherSurge)}</span>
+                    </div>
+                  )}
+                  {priceBreakdown && priceBreakdown.trafficSurge > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted">Traffic Surge</span>
+                      <span className="font-medium text-red-500">+{formatCurrency(priceBreakdown.trafficSurge)}</span>
+                    </div>
+                  )}
+                  {priceBreakdown && priceBreakdown.demandSurge > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted">High Demand</span>
+                      <span className="font-medium text-purple-500">+{formatCurrency(priceBreakdown.demandSurge)}</span>
+                    </div>
+                  )}
+                  {priceBreakdown && priceBreakdown.emergencyFee > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted">Emergency Priority</span>
+                      <span className="font-medium text-red-500">+{formatCurrency(priceBreakdown.emergencyFee)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <hr className="border-border" />
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2"><CreditCard className="text-muted" size={16} /><span className="text-sm text-muted">Estimated Fare</span></div>
-                  <span className="text-xl font-bold text-primary">{formatCurrency(estimatedFare)}</span>
+                  <div className="flex items-center gap-2"><CreditCard className="text-muted" size={16} /><span className="text-sm font-semibold text-foreground">Total Final Price</span></div>
+                  <span className="text-xl font-black text-primary">{formatCurrency(estimatedFare)}</span>
                 </div>
               </div>
             </Card>

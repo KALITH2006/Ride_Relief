@@ -13,6 +13,7 @@ import {
   Moon,
   Sun,
   MapPinned,
+  IndianRupee,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -22,6 +23,7 @@ const navLinks = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/bookings', label: 'Bookings', icon: CalendarCheck },
   { href: '/admin/map', label: 'Live Map', icon: MapPinned },
+  { href: '/admin/pricing', label: 'Pricing', icon: IndianRupee },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/settings', label: 'Settings', icon: Settings },

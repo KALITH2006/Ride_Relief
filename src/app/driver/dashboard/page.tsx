@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
+import { useDriverStatsStore } from '@/stores/driverStatsStore';
+import { updateDriverStatsOnCompletion } from '@/lib/firestore';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import GoogleMap, { type MapMarkerData } from '@/components/maps/GoogleMap';
 import Card from '@/components/ui/Card';
@@ -34,6 +36,8 @@ const demoJobs = [
 export default function DriverDashboard() {
   const { profile, updateProfile } = useAuthStore();
   const { myLocation, startTracking, stopTracking, isTracking, setMyLocation } = useLocationStore();
+  const { stats, startListening, stopListening } = useDriverStatsStore();
+  
   const [isOnline, setIsOnline] = useState(false);
   const [activeJob, setActiveJob] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('');
@@ -41,6 +45,13 @@ export default function DriverDashboard() {
   const [otpError, setOtpError] = useState(false);
   const [todayEarnings, setTodayEarnings] = useState(1240);
   const [todayTrips, setTodayTrips] = useState(5);
+
+  useEffect(() => {
+    if (profile?.uid) {
+      startListening(profile.uid);
+    }
+    return () => stopListening();
+  }, [profile, startListening, stopListening]);
   
   // Fetch accurate location immediately
   const { latitude, longitude } = useGeolocation(true);
@@ -82,8 +93,12 @@ export default function DriverDashboard() {
       
       const completedJob = demoJobs.find(j => j.id === activeJob);
       if (completedJob) {
-        setTodayEarnings(prev => prev + completedJob.estimatedFare);
-        setTodayTrips(prev => prev + 1);
+        if (profile && !profile.uid.startsWith('demo_')) {
+          updateDriverStatsOnCompletion(profile.uid, completedJob.estimatedFare, completedJob.isSOS);
+        } else {
+          setTodayEarnings(prev => prev + completedJob.estimatedFare);
+          setTodayTrips(prev => prev + 1);
+        }
       }
 
       setOtpError(false);
@@ -168,7 +183,17 @@ export default function DriverDashboard() {
           <Card variant="gradient">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><IndianRupee className="text-primary" size={18} /></div>
-              <div><p className="text-xs text-muted">Today&apos;s Earnings</p><p className="text-xl font-bold text-foreground">{formatCurrency(todayEarnings)}</p></div>
+              <div>
+                <p className="text-xs text-muted">Today&apos;s Earnings</p>
+                <motion.p 
+                  key={stats?.todayEarnings || todayEarnings}
+                  initial={{ scale: 1.2, color: '#10b981' }}
+                  animate={{ scale: 1, color: 'currentColor' }}
+                  className="text-xl font-bold text-foreground"
+                >
+                  {formatCurrency(stats?.todayEarnings || todayEarnings)}
+                </motion.p>
+              </div>
             </div>
           </Card>
         </motion.div>
@@ -176,7 +201,17 @@ export default function DriverDashboard() {
           <Card variant="gradient">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center"><Car className="text-emerald-500" size={18} /></div>
-              <div><p className="text-xs text-muted">Trips Today</p><p className="text-xl font-bold text-foreground">{todayTrips}</p></div>
+              <div>
+                <p className="text-xs text-muted">Trips Today</p>
+                <motion.p 
+                  key={stats?.todayTrips || todayTrips}
+                  initial={{ scale: 1.2, color: '#10b981' }}
+                  animate={{ scale: 1, color: 'currentColor' }}
+                  className="text-xl font-bold text-foreground"
+                >
+                  {stats?.todayTrips || todayTrips}
+                </motion.p>
+              </div>
             </div>
           </Card>
         </motion.div>

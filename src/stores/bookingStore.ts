@@ -3,7 +3,9 @@
 import { create } from 'zustand';
 import type { Booking, ServiceType, BookingStatus, Location } from '@/lib/types';
 import { createBooking, updateBooking, getUserBookings, createSOSRequest, findNearestProvider, createTrackingRoom } from '@/lib/firestore';
-import { generateId, estimateFare } from '@/lib/utils';
+import { generateId } from '@/lib/utils';
+import { calculateDynamicPrice } from '@/lib/pricingEngine';
+import type { PriceBreakdown } from '@/lib/types';
 
 interface BookingState {
   // Current booking flow
@@ -11,6 +13,7 @@ interface BookingState {
   pickup: Location | null;
   drop: Location | null;
   estimatedFare: number;
+  priceBreakdown: PriceBreakdown | null;
   isBooking: boolean;
 
   // Bookings list
@@ -36,6 +39,7 @@ export const useBookingStore = create<BookingState>((set, get) => ({
   pickup: null,
   drop: null,
   estimatedFare: 0,
+  priceBreakdown: null,
   isBooking: false,
   bookings: [],
   activeBooking: null,
@@ -73,12 +77,20 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       distanceKm = R * c;
     }
 
-    const fare = estimateFare(distanceKm, serviceType);
-    set({ estimatedFare: fare });
+    const breakdown = calculateDynamicPrice({
+      serviceType,
+      weatherCondition: 'clear', // In real app: Fetch from weather API
+      trafficLevel: 'moderate', // In real app: Fetch from Google Maps Directions API
+      activeBookings: 10, // Mock: active demand
+      availableProviders: 8, // Mock: supply
+      isSOS: serviceType === 'emergency',
+      distanceKm
+    });
+    set({ estimatedFare: breakdown.finalPrice, priceBreakdown: breakdown });
   },
 
   confirmBooking: async (userId, phone) => {
-    const { serviceType, pickup, drop, estimatedFare } = get();
+    const { serviceType, pickup, drop, estimatedFare, priceBreakdown } = get();
     if (!serviceType || !pickup) throw new Error('Missing booking details');
 
     set({ isBooking: true });
@@ -110,6 +122,7 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         createdAt: new Date(),
         otp,
         otpVerified: false,
+        priceBreakdown: priceBreakdown || undefined,
       });
 
       // Find nearest provider
@@ -169,6 +182,7 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       pickup: null,
       drop: null,
       estimatedFare: 0,
+      priceBreakdown: null,
     }),
 
   createSOSBooking: async (userId, phone, location) => {
@@ -181,6 +195,15 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         set({ isBooking: false });
         return demoId;
       }
+      const breakdown = calculateDynamicPrice({
+        serviceType: 'emergency',
+        weatherCondition: 'clear',
+        trafficLevel: 'moderate',
+        activeBookings: 1,
+        availableProviders: 1,
+        isSOS: true,
+      });
+
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       
       const id = await createBooking({
@@ -200,6 +223,7 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         createdAt: new Date(),
         otp,
         otpVerified: false,
+        priceBreakdown: breakdown,
       });
 
       // Save to sosRequests collection

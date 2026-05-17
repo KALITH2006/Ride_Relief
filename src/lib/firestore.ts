@@ -13,11 +13,12 @@ import {
   addDoc,
   onSnapshot,
   Timestamp,
+  runTransaction,
   type DocumentData,
   type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { UserProfile, Booking, Notification, LiveLocation, SOSRequest, TrackingRoom, Provider } from './types';
+import type { UserProfile, Booking, Notification, LiveLocation, SOSRequest, TrackingRoom, Provider, DriverStats } from './types';
 
 // ===== Users =====
 
@@ -420,3 +421,55 @@ export async function verifyOTP(bookingId: string, enteredOTP: string): Promise<
   }
   return false;
 }
+
+// ===== Driver Analytics & Earnings =====
+
+export function subscribeToDriverStats(driverId: string, callback: (stats: DriverStats | null) => void) {
+  return onSnapshot(doc(db, 'driverStats', driverId), (snap) => {
+    if (!snap.exists()) {
+      callback(null);
+      return;
+    }
+    const data = snap.data();
+    callback({
+      ...data,
+      driverId: snap.id,
+    } as DriverStats);
+  });
+}
+
+export async function updateDriverStatsOnCompletion(driverId: string, fare: number, isSOS: boolean): Promise<void> {
+  const statRef = doc(db, 'driverStats', driverId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const sfDoc = await transaction.get(statRef);
+      if (!sfDoc.exists()) {
+        // Initialize if it doesn't exist
+        transaction.set(statRef, {
+          driverId,
+          totalTrips: 1,
+          todayTrips: 1,
+          todayEarnings: fare,
+          weeklyEarnings: fare,
+          monthlyEarnings: fare,
+          completedSOS: isSOS ? 1 : 0,
+          rating: 5.0, // Default start rating
+        });
+      } else {
+        const data = sfDoc.data() as DriverStats;
+        transaction.update(statRef, {
+          totalTrips: (data.totalTrips || 0) + 1,
+          todayTrips: (data.todayTrips || 0) + 1,
+          todayEarnings: (data.todayEarnings || 0) + fare,
+          weeklyEarnings: (data.weeklyEarnings || 0) + fare,
+          monthlyEarnings: (data.monthlyEarnings || 0) + fare,
+          completedSOS: (data.completedSOS || 0) + (isSOS ? 1 : 0),
+        });
+      }
+    });
+  } catch (e) {
+    console.error('Transaction failed: ', e);
+  }
+}
+

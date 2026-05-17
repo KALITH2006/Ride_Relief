@@ -74,6 +74,7 @@ export interface Booking {
   otp?: string;
   otpVerified?: boolean;
   trackingRoomId?: string;
+  priceBreakdown?: PriceBreakdown;
 }
 
 export interface SOSRequest {
@@ -143,6 +144,26 @@ export interface PricingConfig {
   perMinute: number;
   minimumFare: number;
   surgeFactor: number;
+}
+
+export interface PriceBreakdown {
+  basePrice: number;
+  trafficSurge: number;
+  weatherSurge: number;
+  demandSurge: number;
+  emergencyFee: number;
+  finalPrice: number;
+}
+
+export interface DriverStats {
+  driverId: string;
+  totalTrips: number;
+  todayTrips: number;
+  todayEarnings: number;
+  weeklyEarnings: number;
+  monthlyEarnings: number;
+  completedSOS: number;
+  rating: number;
 }
 
 export const SERVICE_LABELS: Record<ServiceType, string> = {
