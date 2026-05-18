@@ -65,6 +65,21 @@ function BookingPageContent() {
     setDropAddress(location.address);
   };
 
+  const performReverseGeocode = (lat: number, lng: number, callback: (addr: string) => void) => {
+    if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) {
+      callback(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      return;
+    }
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results && results[0]) {
+        callback(results[0].formatted_address);
+      } else {
+        callback(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      }
+    });
+  };
+
   const handleLocationConfirm = () => {
     if (!pickupAddress) {
       toast.error('Please enter a pickup location');
@@ -95,12 +110,39 @@ function BookingPageContent() {
   // Build map markers for the location step
   const locationMarkers: MapMarkerData[] = [];
   if (pickupLocation) {
-    locationMarkers.push({ id: 'pickup', position: { lat: pickupLocation.lat, lng: pickupLocation.lng }, title: 'Pickup', role: 'pickup', info: pickupAddress, draggable: true, onDragEnd: (lat, lng) => { setPickupLocation({ lat, lng, address: pickupAddress }); } });
+    locationMarkers.push({
+      id: 'pickup',
+      position: { lat: pickupLocation.lat, lng: pickupLocation.lng },
+      title: 'Pickup',
+      role: 'pickup',
+      info: 'Drag to adjust exact location',
+      draggable: true,
+      onDragEnd: (lat, lng) => {
+        performReverseGeocode(lat, lng, (addr) => {
+          setPickupLocation({ lat, lng, address: addr });
+          setPickupAddress(addr);
+        });
+      }
+    });
   } else if (latitude && longitude) {
     locationMarkers.push({ id: 'current', position: { lat: latitude, lng: longitude }, title: 'Your Location', role: 'customer' });
   }
+  
   if (dropLocation) {
-    locationMarkers.push({ id: 'drop', position: { lat: dropLocation.lat, lng: dropLocation.lng }, title: 'Drop-off', role: 'drop', info: dropAddress, draggable: true, onDragEnd: (lat, lng) => { setDropLocation({ lat, lng, address: dropAddress }); } });
+    locationMarkers.push({
+      id: 'drop',
+      position: { lat: dropLocation.lat, lng: dropLocation.lng },
+      title: 'Drop-off',
+      role: 'drop',
+      info: 'Drag to adjust exact location',
+      draggable: true,
+      onDragEnd: (lat, lng) => {
+        performReverseGeocode(lat, lng, (addr) => {
+          setDropLocation({ lat, lng, address: addr });
+          setDropAddress(addr);
+        });
+      }
+    });
   }
 
   return (
@@ -159,11 +201,30 @@ function BookingPageContent() {
               routeOrigin={pickupLocation ? { lat: pickupLocation.lat, lng: pickupLocation.lng } : undefined}
               routeDestination={dropLocation ? { lat: dropLocation.lat, lng: dropLocation.lng } : undefined}
               onMapClick={(lat, lng) => {
-                if (!pickupLocation) { setPickupLocation({ lat, lng, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }); setPickupAddress(`Selected (${lat.toFixed(4)}, ${lng.toFixed(4)})`); }
-                else if (!dropLocation) { setDropLocation({ lat, lng, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }); setDropAddress(`Selected (${lat.toFixed(4)}, ${lng.toFixed(4)})`); }
+                if (!pickupLocation) {
+                  performReverseGeocode(lat, lng, (addr) => {
+                    setPickupLocation({ lat, lng, address: addr });
+                    setPickupAddress(addr);
+                  });
+                } else if (!dropLocation) {
+                  performReverseGeocode(lat, lng, (addr) => {
+                    setDropLocation({ lat, lng, address: addr });
+                    setDropAddress(addr);
+                  });
+                } else {
+                  // If both exist, allow clicking to move pickup
+                  performReverseGeocode(lat, lng, (addr) => {
+                    setPickupLocation({ lat, lng, address: addr });
+                    setPickupAddress(addr);
+                  });
+                }
               }}
               className="rounded-2xl"
             />
+            
+            <p className="text-xs text-center text-muted flex items-center justify-center gap-1">
+              <MapPin size={12} /> Map GPS inaccurate? Click the map or drag the pin to set exact location.
+            </p>
 
             <div className="space-y-1">
               <div className="flex justify-between items-end mb-1">
@@ -172,9 +233,10 @@ function BookingPageContent() {
                   type="button" 
                   onClick={() => {
                     if (latitude && longitude) {
-                      const addr = `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-                      setPickupAddress(addr);
-                      setPickupLocation({ lat: latitude, lng: longitude, address: addr });
+                      performReverseGeocode(latitude, longitude, (addr) => {
+                        setPickupAddress(addr);
+                        setPickupLocation({ lat: latitude, lng: longitude, address: addr });
+                      });
                     } else {
                       toast.error('Unable to get current location. Check browser permissions.');
                     }
