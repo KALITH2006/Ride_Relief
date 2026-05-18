@@ -10,7 +10,7 @@ import { useBookingStore } from '@/stores/bookingStore';
 import Button from '@/components/ui/Button';
 import toast from 'react-hot-toast';
 
-const SOS_PHONE = process.env.NEXT_PUBLIC_SOS_PHONE || '+911234567890';
+const SOS_PHONE = process.env.NEXT_PUBLIC_SOS_PHONE || '+917639834962';
 
 export default function SOSButton() {
   const [isOpen, setIsOpen] = useState(false);

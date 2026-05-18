@@ -88,7 +88,7 @@ export default function TrackBookingPage({ params }: { params: Promise<{ booking
       {/* SOS Button */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
         <Button variant="danger" size="lg" className="w-full" onClick={() => {
-          const phone = process.env.NEXT_PUBLIC_SOS_PHONE || '+911234567890';
+          const phone = process.env.NEXT_PUBLIC_SOS_PHONE || '+917639834962';
           window.open(`tel:${phone}`);
         }}>
           <AlertTriangle size={18} /> Emergency SOS
