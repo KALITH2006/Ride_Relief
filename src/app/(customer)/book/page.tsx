@@ -254,6 +254,7 @@ function BookingPageContent() {
                 onChange={setPickupAddress}
                 onLocationSelect={handlePickupSelect}
                 icon={<MapPin size={16} />}
+                currentLocation={latitude && longitude ? { lat: latitude, lng: longitude } : null}
               />
             </div>
 
@@ -265,6 +266,7 @@ function BookingPageContent() {
               onChange={setDropAddress}
               onLocationSelect={handleDropSelect}
               icon={<MapPin size={16} />}
+              currentLocation={pickupLocation ? { lat: pickupLocation.lat, lng: pickupLocation.lng } : latitude && longitude ? { lat: latitude, lng: longitude } : null}
             />
 
             <Button size="lg" className="w-full" onClick={handleLocationConfirm}>

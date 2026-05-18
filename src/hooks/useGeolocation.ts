@@ -56,8 +56,8 @@ export function useGeolocation(autoWatch = false) {
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 30000,
+        timeout: 15000,
+        maximumAge: 0,
       }
     );
   }, [state.isWatching]);

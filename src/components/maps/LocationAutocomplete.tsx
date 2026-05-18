@@ -14,6 +14,7 @@ interface LocationAutocompleteProps {
   onLocationSelect: (location: Location) => void;
   icon?: React.ReactNode;
   className?: string;
+  currentLocation?: { lat: number; lng: number } | null;
 }
 
 interface Prediction {
@@ -25,7 +26,7 @@ interface Prediction {
 
 export default function LocationAutocomplete({
   id, label, placeholder = 'Search for a location...', value, onChange,
-  onLocationSelect, icon, className = '',
+  onLocationSelect, icon, className = '', currentLocation
 }: LocationAutocompleteProps) {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -45,8 +46,21 @@ export default function LocationAutocomplete({
 
   const fetchPredictions = useCallback((input: string) => {
     if (!autocompleteService || input.length < 3) { setPredictions([]); return; }
+    
+    const request: google.maps.places.AutocompletionRequest = { 
+      input, 
+      componentRestrictions: { country: 'in' }, 
+      types: ['geocode', 'establishment'] 
+    };
+
+    if (currentLocation && typeof google !== 'undefined') {
+      // Bias results to 50km around current location
+      request.location = new google.maps.LatLng(currentLocation.lat, currentLocation.lng);
+      request.radius = 50000;
+    }
+
     autocompleteService.getPlacePredictions(
-      { input, componentRestrictions: { country: 'in' }, types: ['geocode', 'establishment'] },
+      request,
       (results, status) => {
         if (status === google.maps.places.PlacesServiceStatus.OK && results) {
           setPredictions(results.map((r) => ({
