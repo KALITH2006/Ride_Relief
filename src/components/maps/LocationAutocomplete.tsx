@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MapPin, Navigation, X, Loader2 } from 'lucide-react';
 import { useAutocompleteService, useGeocoderService } from '@/hooks/useGoogleMaps';
 import type { Location } from '@/lib/types';
+import toast from 'react-hot-toast';
 
 interface LocationAutocompleteProps {
   id: string;
@@ -62,7 +63,12 @@ export default function LocationAutocomplete({
             secondaryText: r.structured_formatting.secondary_text,
           })));
           setIsOpen(true);
-        } else { setPredictions([]); }
+        } else {
+          setPredictions([]);
+          if (status !== google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+            toast.error(`Places API Error: ${status}`);
+          }
+        }
       }
     );
   }, [autocompleteService, currentLocation]);
