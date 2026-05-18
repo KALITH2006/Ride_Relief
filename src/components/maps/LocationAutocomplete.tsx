@@ -80,14 +80,28 @@ export default function LocationAutocomplete({
     setPredictions([]);
     if (!geocoder) return;
     setIsGeocoding(true);
-    try {
-      const result = await geocoder.geocode({ placeId: prediction.placeId });
-      if (result.results[0]) {
-        const loc = result.results[0].geometry.location;
-        onLocationSelect({ lat: loc.lat(), lng: loc.lng(), address: prediction.description });
-      }
-    } catch (err) { console.error('Geocoding failed:', err); }
-    finally { setIsGeocoding(false); }
+    
+    // Use PlacesService instead of Geocoder to avoid requiring the Geocoding API
+    if (typeof google !== 'undefined') {
+      const placesService = new google.maps.places.PlacesService(document.createElement('div'));
+      placesService.getDetails(
+        { placeId: prediction.placeId, fields: ['geometry'] },
+        (place, status) => {
+          setIsGeocoding(false);
+          if (status === google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
+            onLocationSelect({ 
+              lat: place.geometry.location.lat(), 
+              lng: place.geometry.location.lng(), 
+              address: prediction.description 
+            });
+          } else {
+            console.error('PlacesService getDetails failed:', status);
+          }
+        }
+      );
+    } else {
+      setIsGeocoding(false);
+    }
   };
 
   const handleUseCurrentLocation = () => {
