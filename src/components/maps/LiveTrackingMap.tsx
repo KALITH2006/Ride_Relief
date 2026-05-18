@@ -8,7 +8,10 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { useLocationStore } from '@/stores/locationStore';
-import type { LiveLocation, BookingStatus } from '@/lib/types';
+import { useAuthStore } from '@/stores/authStore';
+import { useTrackingStore } from '@/stores/trackingStore';
+import { predictETA } from '@/lib/etaPrediction';
+import type { LiveLocation, BookingStatus, TrackingRoom } from '@/lib/types';
 
 interface LiveTrackingMapProps {
   bookingId: string;
@@ -21,27 +24,65 @@ interface LiveTrackingMapProps {
   dropLocation?: { lat: number; lng: number };
   status: BookingStatus;
   serviceType: string;
+  trackingRoom: TrackingRoom | null;
 }
 
 export default function LiveTrackingMap({
   bookingId, driverId, driverName, driverPhone,
-  customerLocation, pickupAddress, dropAddress, dropLocation, status, serviceType,
+  customerLocation, pickupAddress, dropAddress, dropLocation, status, serviceType, trackingRoom
 }: LiveTrackingMapProps) {
   const { trackUser } = useLocationStore();
+  const { profile } = useAuthStore();
+  const { updateETA } = useTrackingStore();
   const [driverLocation, setDriverLocation] = useState<LiveLocation | null>(null);
   const [eta, setEta] = useState<number | null>(null);
   const [distance, setDistance] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!driverId) return;
     const unsubscribe = trackUser(driverId, (location) => {
       setDriverLocation(location);
-      // Approximate ETA from distance
-      const dist = haversineDistance(location.lat, location.lng, customerLocation.lat, customerLocation.lng);
-      setDistance(dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`);
-      setEta(Math.max(1, Math.round(dist * 2.5))); // ~2.5 min per km
     });
     return () => unsubscribe();
-  }, [driverId, customerLocation.lat, customerLocation.lng, trackUser]);
+  }, [driverId, trackUser]);
+
+  // Use TrackingRoom data if available, fallback to local distance calc
+  const finalDriverLocation = trackingRoom?.providerLocation || driverLocation;
+  
+  useEffect(() => {
+    if (trackingRoom?.eta) {
+      setEta(parseInt(trackingRoom.eta));
+      setDistance(trackingRoom.distance || null);
+    } else if (finalDriverLocation) {
+      const dist = haversineDistance(finalDriverLocation.lat, finalDriverLocation.lng, customerLocation.lat, customerLocation.lng);
+      setDistance(dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`);
+      setEta(Math.max(1, Math.round(dist * 2.5)));
+    }
+  }, [trackingRoom, finalDriverLocation, customerLocation]);
+
+  // Handlers for Google Maps Directions API callback
+  const handleRouteCalculated = (distText: string, durText: string, distValue: number, durValue: number, polyline: string) => {
+    // Only the driver should calculate and broadcast the ETA to the room
+    if (profile?.role === 'driver' && status !== 'completed') {
+      const distanceKm = distValue / 1000;
+      // Get AI buffered ETA based on distance and current hour
+      const etaObj = predictETA({
+        distanceKm,
+        weatherCondition: 'clear', // real app: fetch from weather API
+        trafficLevel: 'moderate', // real app: could determine from durValue vs normal distance
+        timeOfDay: new Date().getHours()
+      });
+      
+      const newEta = etaObj.minutes.toString();
+      
+      // Update local state if not present in tracking room (or just broadcast)
+      setEta(etaObj.minutes);
+      setDistance(distText);
+      
+      // Update global tracking room so customer sees it
+      updateETA(newEta, distText, polyline);
+    }
+  };
 
   const markers: MapMarkerData[] = [
     {
@@ -53,14 +94,14 @@ export default function LiveTrackingMap({
     },
   ];
 
-  if (driverLocation) {
+  if (finalDriverLocation) {
     const roleLabel = serviceType === 'mechanic' ? 'mechanic' : serviceType === 'rental' ? 'rental_car' : 'driver';
     markers.push({
       id: 'driver',
-      position: { lat: driverLocation.lat, lng: driverLocation.lng },
+      position: { lat: finalDriverLocation.lat, lng: finalDriverLocation.lng },
       title: driverName,
       role: roleLabel as MapMarkerData['role'],
-      heading: driverLocation.heading,
+      heading: driverLocation?.heading || 0,
       info: `${driverName} • ${distance || 'Calculating...'}`,
     });
   }
@@ -90,10 +131,12 @@ export default function LiveTrackingMap({
           markers={markers}
           fitMarkers={markers.length > 1}
           height="350px"
-          showRoute={!!driverLocation}
-          routeOrigin={driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : undefined}
+          showRoute={!!finalDriverLocation}
+          routeOrigin={finalDriverLocation ? { lat: finalDriverLocation.lat, lng: finalDriverLocation.lng } : undefined}
           routeDestination={customerLocation}
+          onRouteCalculated={handleRouteCalculated}
           className="rounded-2xl overflow-hidden"
+          encodedPolyline={trackingRoom?.routePolyline}
         />
         {/* ETA Overlay */}
         {eta !== null && status !== 'completed' && (
@@ -128,8 +171,8 @@ export default function LiveTrackingMap({
                 <Button variant="outline" size="sm"><Phone size={14} /></Button>
               </a>
             )}
-            {driverLocation && (
-              <a href={`https://www.google.com/maps/dir/?api=1&destination=${customerLocation.lat},${customerLocation.lng}&origin=${driverLocation.lat},${driverLocation.lng}`} target="_blank" rel="noopener noreferrer">
+            {finalDriverLocation && (
+              <a href={`https://www.google.com/maps/dir/?api=1&destination=${customerLocation.lat},${customerLocation.lng}&origin=${finalDriverLocation.lat},${finalDriverLocation.lng}`} target="_blank" rel="noopener noreferrer">
                 <Button size="sm"><Navigation size={14} /> Navigate</Button>
               </a>
             )}

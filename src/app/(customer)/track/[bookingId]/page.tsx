@@ -8,29 +8,33 @@ import LiveTrackingMap from '@/components/maps/LiveTrackingMap';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useAuthStore } from '@/stores/authStore';
-import type { BookingStatus } from '@/lib/types';
-
-// Demo booking data for testing
-const DEMO_BOOKING = {
-  id: 'bk_demo_track',
-  driverId: 'demo_driver_raj',
-  driverName: 'Rajesh Kumar',
-  driverPhone: '+91 98765 43210',
-  customerLocation: { lat: 12.9716, lng: 77.5946 },
-  pickupAddress: 'MG Road, Bangalore',
-  dropAddress: 'Whitefield, Bangalore',
-  dropLocation: { lat: 12.9698, lng: 77.7500 },
-  status: 'on_the_way' as BookingStatus,
-  serviceType: 'acting_driver',
-  otp: '482913',
-  otpVerified: false,
-};
+import { useTrackingStore } from '@/stores/trackingStore';
+import { subscribeToBooking } from '@/lib/firestore';
+import type { Booking } from '@/lib/types';
+import ChatModal from '@/components/ui/ChatModal';
 
 export default function TrackBookingPage({ params }: { params: Promise<{ bookingId: string }> }) {
   const { bookingId } = use(params);
   const router = useRouter();
   const { profile } = useAuthStore();
-  const [booking, setBooking] = useState(DEMO_BOOKING);
+  const { joinRoom, leaveRoom, room } = useTrackingStore();
+  const [booking, setBooking] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    const unsubBooking = subscribeToBooking(bookingId, (data) => {
+      setBooking(data);
+    });
+    joinRoom(bookingId);
+
+    return () => {
+      unsubBooking();
+      leaveRoom();
+    };
+  }, [bookingId, joinRoom, leaveRoom]);
+
+  if (!booking) {
+    return <div className="flex h-screen items-center justify-center"><div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin"></div></div>;
+  }
 
   return (
     <div className="px-4 py-5 max-w-lg mx-auto space-y-4">
@@ -49,15 +53,16 @@ export default function TrackBookingPage({ params }: { params: Promise<{ booking
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <LiveTrackingMap
           bookingId={bookingId}
-          driverId={booking.driverId}
-          driverName={booking.driverName}
-          driverPhone={booking.driverPhone}
-          customerLocation={booking.customerLocation}
-          pickupAddress={booking.pickupAddress}
-          dropAddress={booking.dropAddress}
-          dropLocation={booking.dropLocation}
+          driverId={booking.driverId || ''}
+          driverName={booking.driverName || 'Finding Driver...'}
+          driverPhone={undefined} // In a real app, fetch from driver profile
+          customerLocation={booking.pickup}
+          pickupAddress={booking.pickup.address}
+          dropAddress={booking.drop?.address}
+          dropLocation={booking.drop || undefined}
           status={booking.status}
           serviceType={booking.serviceType}
+          trackingRoom={room}
         />
       </motion.div>
 
@@ -89,6 +94,9 @@ export default function TrackBookingPage({ params }: { params: Promise<{ booking
           <AlertTriangle size={18} /> Emergency SOS
         </Button>
       </motion.div>
+
+      {/* Floating Chat */}
+      <ChatModal bookingId={bookingId} />
     </div>
   );
 }

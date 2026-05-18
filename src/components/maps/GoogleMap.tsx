@@ -44,8 +44,10 @@ interface GoogleMapProps {
   showRoute?: boolean;
   routeOrigin?: { lat: number; lng: number };
   routeDestination?: { lat: number; lng: number };
+  encodedPolyline?: string;
   onMapClick?: (lat: number, lng: number) => void;
   onMapReady?: (map: google.maps.Map) => void;
+  onRouteCalculated?: (distanceText: string, durationText: string, distanceValue: number, durationValue: number, polyline: string) => void;
   fitMarkers?: boolean;
   height?: string;
 }
@@ -96,8 +98,10 @@ export default function GoogleMap({
   showRoute = false,
   routeOrigin,
   routeDestination,
+  encodedPolyline,
   onMapClick,
   onMapReady,
+  onRouteCalculated,
   fitMarkers = false,
   height = '300px',
 }: GoogleMapProps) {
@@ -242,6 +246,14 @@ export default function GoogleMap({
       (result, status) => {
         if (status === 'OK' && result && directionsRenderer.current) {
           directionsRenderer.current.setDirections(result);
+          
+          if (onRouteCalculated && result.routes && result.routes[0] && result.routes[0].legs[0]) {
+            const leg = result.routes[0].legs[0];
+            const polyline = result.routes[0].overview_polyline;
+            if (leg.distance && leg.duration) {
+              onRouteCalculated(leg.distance.text, leg.duration.text, leg.distance.value, leg.duration.value, polyline);
+            }
+          }
         }
       }
     );
@@ -253,6 +265,23 @@ export default function GoogleMap({
       }
     };
   }, [showRoute, routeOrigin, routeDestination, isLoaded]);
+
+  // Draw Encoded Polyline (for customers tracking driver)
+  useEffect(() => {
+    if (!mapInstance.current || !encodedPolyline || !isLoaded || (showRoute && routeOrigin && routeDestination)) return;
+
+    const polyline = new google.maps.Polyline({
+      path: google.maps.geometry.encoding.decodePath(encodedPolyline),
+      strokeColor: '#3b82f6',
+      strokeWeight: 5,
+      strokeOpacity: 0.8,
+      map: mapInstance.current,
+    });
+
+    return () => {
+      polyline.setMap(null);
+    };
+  }, [encodedPolyline, isLoaded, showRoute, routeOrigin, routeDestination]);
 
   if (loadError) {
     return (

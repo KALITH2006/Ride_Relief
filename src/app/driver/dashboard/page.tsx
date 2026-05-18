@@ -9,14 +9,16 @@ import {
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
 import { useDriverStatsStore } from '@/stores/driverStatsStore';
-import { updateDriverStatsOnCompletion, subscribeToAvailableJobs, updateBooking } from '@/lib/firestore';
+import { updateDriverStatsOnCompletion, subscribeToAvailableJobs, updateBooking, updateTrackingRoom } from '@/lib/firestore';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import { useTrackingStore } from '@/stores/trackingStore';
 import type { Booking } from '@/lib/types';
 import GoogleMap, { type MapMarkerData } from '@/components/maps/GoogleMap';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Avatar from '@/components/ui/Avatar';
+import ChatModal from '@/components/ui/ChatModal';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
@@ -26,6 +28,7 @@ export default function DriverDashboard() {
   const { profile, updateProfile } = useAuthStore();
   const { myLocation, startTracking, stopTracking, isTracking, setMyLocation } = useLocationStore();
   const { stats, startListening, stopListening } = useDriverStatsStore();
+  const { updateMyLiveLocation, joinRoom, leaveRoom, room } = useTrackingStore();
   
   const [isOnline, setIsOnline] = useState(false);
   const [availableJobs, setAvailableJobs] = useState<Booking[]>([]);
@@ -63,8 +66,11 @@ export default function DriverDashboard() {
   useEffect(() => {
     if (latitude && longitude) {
       setMyLocation(latitude, longitude);
+      if (activeJob?.trackingRoomId) {
+        updateMyLiveLocation('provider', latitude, longitude);
+      }
     }
-  }, [latitude, longitude, setMyLocation]);
+  }, [latitude, longitude, setMyLocation, activeJob, updateMyLiveLocation]);
 
   const toggleOnline = () => {
     const newStatus = !isOnline;
@@ -86,6 +92,14 @@ export default function DriverDashboard() {
     setJobStatus('assigned');
     if (profile) {
       await updateBooking(job.id, { status: 'assigned', driverId: profile.uid, driverName: profile.name });
+      if (job.trackingRoomId) {
+        await updateTrackingRoom(job.trackingRoomId, {
+          providerId: profile.uid,
+          providerLocation: myLocation || null,
+          status: 'assigned'
+        });
+        joinRoom(job.id);
+      }
     }
     toast.success('Job accepted! Navigate to customer.');
   };
@@ -114,9 +128,13 @@ export default function DriverDashboard() {
       setActiveJob(null);
       setJobStatus('');
       setOtpInput('');
+      leaveRoom();
     } else {
       setJobStatus(status);
       await updateBooking(activeJob.id, { status: status as any });
+      if (activeJob.trackingRoomId) {
+        await updateTrackingRoom(activeJob.trackingRoomId, { status: status as any });
+      }
       toast(`Status updated: ${status.replace('_', ' ')}`);
     }
   };
@@ -309,6 +327,11 @@ export default function DriverDashboard() {
           <h3 className="font-semibold text-foreground">You&apos;re Offline</h3>
           <p className="text-sm text-muted mt-1">Go online to start receiving job requests</p>
         </Card>
+      )}
+
+      {/* Driver Chat Modal */}
+      {activeJob && (
+        <ChatModal bookingId={activeJob.id} />
       )}
     </div>
   );

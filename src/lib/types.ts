@@ -20,6 +20,7 @@ export interface UserProfile {
   fcmToken?: string;
   savedAddresses?: SavedAddress[];
   avatar?: string;
+  city?: string;
   createdAt: Date;
 }
 
@@ -73,8 +74,10 @@ export interface Booking {
   completedAt?: Date;
   otp?: string;
   otpVerified?: boolean;
+  otpExpiresAt?: Date;
   trackingRoomId?: string;
   priceBreakdown?: PriceBreakdown;
+  city?: string;
 }
 
 export interface SOSRequest {
@@ -91,12 +94,23 @@ export interface SOSRequest {
 export interface TrackingRoom {
   id?: string;
   bookingId: string;
+  customerId: string;
+  providerId: string | null;
   customerLocation: { lat: number; lng: number } | null;
   providerLocation: { lat: number; lng: number } | null;
-  routePolyline?: string;
-  eta?: string;
   status: BookingStatus;
+  eta?: string;
+  distance?: string;
+  routePolyline?: string;
+  serviceType: ServiceType | 'SOS';
   updatedAt: Date;
+}
+
+export interface ChatMessage {
+  id?: string;
+  senderId: string;
+  message: string;
+  createdAt: Date;
 }
 
 export interface Provider {

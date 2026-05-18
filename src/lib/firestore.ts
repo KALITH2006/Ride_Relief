@@ -18,7 +18,17 @@ import {
   type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { UserProfile, Booking, Notification, LiveLocation, SOSRequest, TrackingRoom, Provider, DriverStats } from './types';
+import type { 
+  UserProfile, 
+  Booking, 
+  Notification, 
+  LiveLocation, 
+  SOSRequest, 
+  TrackingRoom, 
+  Provider, 
+  DriverStats,
+  ChatMessage,
+} from './types';
 
 // ===== Users =====
 
@@ -139,6 +149,21 @@ export async function getPendingBookings(): Promise<Booking[]> {
     id: d.id,
     createdAt: d.data().createdAt?.toDate?.() || new Date(),
   })) as Booking[];
+}
+
+export function subscribeToBooking(bookingId: string, callback: (booking: Booking | null) => void) {
+  return onSnapshot(doc(db, 'bookings', bookingId), (snap) => {
+    if (!snap.exists()) {
+      callback(null);
+      return;
+    }
+    const data = snap.data();
+    callback({
+      ...data,
+      id: snap.id,
+      createdAt: data.createdAt?.toDate?.() || new Date(),
+    } as Booking);
+  });
 }
 
 export function subscribeToBookings(
@@ -354,6 +379,48 @@ export function subscribeToTrackingRoom(bookingId: string, callback: (room: Trac
       id: d.id,
       updatedAt: data.updatedAt?.toDate?.() || new Date(),
     } as TrackingRoom);
+  });
+}
+
+export async function updateTrackingRoomLocation(
+  bookingId: string, 
+  role: 'customer' | 'provider', 
+  location: { lat: number, lng: number }
+): Promise<void> {
+  const q = query(collection(db, 'trackingRooms'), where('bookingId', '==', bookingId), limit(1));
+  const snap = await getDocs(q);
+  if (snap.empty) return;
+
+  const docId = snap.docs[0].id;
+  const updateField = role === 'customer' ? 'customerLocation' : 'providerLocation';
+  
+  await updateDoc(doc(db, 'trackingRooms', docId), {
+    [updateField]: location,
+    updatedAt: Timestamp.now(),
+  });
+}
+
+// ===== Chat System =====
+
+export async function sendChatMessage(bookingId: string, message: Omit<ChatMessage, 'id' | 'createdAt'>): Promise<void> {
+  await addDoc(collection(db, `messages/${bookingId}/chat`), {
+    ...message,
+    createdAt: Timestamp.now(),
+  });
+}
+
+export function subscribeToChat(bookingId: string, callback: (messages: ChatMessage[]) => void) {
+  const q = query(
+    collection(db, `messages/${bookingId}/chat`),
+    orderBy('createdAt', 'asc')
+  );
+  return onSnapshot(q, (snap) => {
+    const msgs = snap.docs.map((d) => ({
+      ...d.data(),
+      id: d.id,
+      createdAt: d.data().createdAt?.toDate?.() || new Date(),
+    })) as ChatMessage[];
+    callback(msgs);
   });
 }
 

@@ -125,6 +125,18 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         priceBreakdown: priceBreakdown || undefined,
       });
 
+      const trackingRoomId = await createTrackingRoom({
+        bookingId: id,
+        customerId: userId,
+        providerId: null,
+        customerLocation: { lat: pickup.lat, lng: pickup.lng },
+        providerLocation: null,
+        status: 'requested',
+        serviceType,
+      });
+
+      await updateBooking(id, { trackingRoomId });
+
       // Find nearest provider
       const provider = await findNearestProvider(pickup.lat, pickup.lng, serviceType, 10);
       if (provider) {
@@ -235,6 +247,18 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         status: 'searching',
         priority: 'high',
       });
+
+      const trackingRoomId = await createTrackingRoom({
+        bookingId: id,
+        customerId: userId,
+        providerId: null,
+        customerLocation: { lat: location.lat, lng: location.lng },
+        providerLocation: null,
+        status: 'requested',
+        serviceType: 'SOS',
+      });
+
+      await updateBooking(id, { trackingRoomId });
 
       // Find nearest emergency/mechanic provider
       const provider = await findNearestProvider(location.lat, location.lng, 'emergency', 15);
