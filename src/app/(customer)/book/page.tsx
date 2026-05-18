@@ -96,7 +96,11 @@ function BookingPageContent() {
   };
 
   const handleConfirm = async () => {
-    if (!profile) return;
+    if (!profile) {
+      toast.error('Please login to confirm your booking');
+      router.push('/login');
+      return;
+    }
     try {
       const id = await confirmBooking(profile.uid, profile.phone);
       setBookingId(id);
