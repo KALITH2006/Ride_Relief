@@ -52,12 +52,6 @@ export default function LocationAutocomplete({
       componentRestrictions: { country: 'in' }
     };
 
-    if (currentLocation && typeof google !== 'undefined') {
-      // Bias results to 50km around current location
-      request.location = new google.maps.LatLng(currentLocation.lat, currentLocation.lng);
-      request.radius = 50000;
-    }
-
     autocompleteService.getPlacePredictions(
       request,
       (results, status) => {
