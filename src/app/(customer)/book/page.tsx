@@ -10,8 +10,9 @@ import {
 import { useAuthStore } from '@/stores/authStore';
 import { useBookingStore } from '@/stores/bookingStore';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import GoogleMap, { type MapMarkerData } from '@/components/maps/GoogleMap';
+import LeafletMap, { type MapMarkerData } from '@/components/maps/LeafletMap';
 import LocationAutocomplete from '@/components/maps/LocationAutocomplete';
+import { reverseGeocode } from '@/lib/mapServices';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import { formatCurrency } from '@/lib/utils';
@@ -66,18 +67,7 @@ function BookingPageContent() {
   };
 
   const performReverseGeocode = (lat: number, lng: number, callback: (addr: string) => void) => {
-    if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) {
-      callback(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-      return;
-    }
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === 'OK' && results && results[0]) {
-        callback(results[0].formatted_address);
-      } else {
-        callback(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-      }
-    });
+    reverseGeocode(lat, lng).then(callback);
   };
 
   const handleLocationConfirm = () => {
@@ -196,7 +186,7 @@ function BookingPageContent() {
             </div>
 
             {/* Live Google Map */}
-            <GoogleMap
+            <LeafletMap
               center={pickupLocation ? { lat: pickupLocation.lat, lng: pickupLocation.lng } : latitude && longitude ? { lat: latitude, lng: longitude } : undefined}
               markers={locationMarkers}
               fitMarkers={locationMarkers.length > 1}
@@ -292,7 +282,7 @@ function BookingPageContent() {
 
             {/* Route Preview Map */}
             {pickup && (
-              <GoogleMap
+              <LeafletMap
                 markers={[
                   { id: 'pickup-confirm', position: { lat: pickup.lat, lng: pickup.lng }, title: 'Pickup', role: 'pickup', info: pickup.address },
                   ...(drop ? [{ id: 'drop-confirm', position: { lat: drop.lat, lng: drop.lng }, title: 'Drop-off', role: 'drop' as const, info: drop.address }] : []),

@@ -13,7 +13,7 @@ import { updateDriverStatsOnCompletion, subscribeToAvailableJobs, updateBooking,
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useTrackingStore } from '@/stores/trackingStore';
 import type { Booking } from '@/lib/types';
-import GoogleMap, { type MapMarkerData } from '@/components/maps/GoogleMap';
+import LeafletMap, { type MapMarkerData } from '@/components/maps/LeafletMap';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -187,7 +187,7 @@ export default function DriverDashboard() {
       {/* Live Map */}
       {isOnline && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <GoogleMap
+          <LeafletMap
             center={myLocation || { lat: 12.9716, lng: 77.5946 }}
             markers={mapMarkers}
             fitMarkers={mapMarkers.length > 1}

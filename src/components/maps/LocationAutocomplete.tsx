@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MapPin, Navigation, X, Loader2 } from 'lucide-react';
-import { useAutocompleteService, useGeocoderService } from '@/hooks/useGoogleMaps';
+import { searchPlaces, reverseGeocode, type NominatimResult } from '@/lib/mapServices';
 import type { Location } from '@/lib/types';
-import toast from 'react-hot-toast';
 
 interface LocationAutocompleteProps {
   id: string;
@@ -23,6 +22,8 @@ interface Prediction {
   description: string;
   mainText: string;
   secondaryText: string;
+  lat: number;
+  lng: number;
 }
 
 export default function LocationAutocomplete({
@@ -32,11 +33,10 @@ export default function LocationAutocomplete({
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const autocompleteService = useAutocompleteService();
-  const geocoder = useGeocoderService();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Close dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setIsOpen(false);
@@ -45,89 +45,70 @@ export default function LocationAutocomplete({
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const fetchPredictions = useCallback((input: string) => {
-    if (!autocompleteService || input.length < 3) { setPredictions([]); return; }
-    
-    const request: google.maps.places.AutocompletionRequest = { 
-      input, 
-      componentRestrictions: { country: 'in' }
-    };
+  const fetchPredictions = useCallback(async (input: string) => {
+    if (input.length < 3) { setPredictions([]); return; }
 
-    autocompleteService.getPlacePredictions(
-      request,
-      (results, status) => {
-        if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-          setPredictions(results.map((r) => ({
-            placeId: r.place_id, description: r.description,
-            mainText: r.structured_formatting.main_text,
-            secondaryText: r.structured_formatting.secondary_text,
-          })));
-          setIsOpen(true);
-        } else {
-          setPredictions([]);
-          if (status !== google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-            toast.error(`Places API Error: ${status}`);
-          }
-        }
+    try {
+      const results: NominatimResult[] = await searchPlaces(input, 5);
+      if (results.length > 0) {
+        setPredictions(results.map((r) => {
+          const parts = r.display_name.split(', ');
+          return {
+            placeId: String(r.place_id),
+            description: r.display_name,
+            mainText: parts[0] || r.display_name,
+            secondaryText: parts.slice(1, 3).join(', '),
+            lat: parseFloat(r.lat),
+            lng: parseFloat(r.lon),
+          };
+        }));
+        setIsOpen(true);
+      } else {
+        setPredictions([]);
       }
-    );
-  }, [autocompleteService, currentLocation]);
+    } catch {
+      setPredictions([]);
+    }
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     onChange(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchPredictions(val), 300);
+    debounceRef.current = setTimeout(() => fetchPredictions(val), 400);
   };
 
-  const handleSelect = async (prediction: Prediction) => {
+  const handleSelect = (prediction: Prediction) => {
     onChange(prediction.description);
     setIsOpen(false);
     setPredictions([]);
-    if (!geocoder) return;
-    setIsGeocoding(true);
-    
-    // Use PlacesService instead of Geocoder to avoid requiring the Geocoding API
-    if (typeof google !== 'undefined') {
-      const placesService = new google.maps.places.PlacesService(document.createElement('div'));
-      placesService.getDetails(
-        { placeId: prediction.placeId, fields: ['geometry'] },
-        (place, status) => {
-          setIsGeocoding(false);
-          if (status === google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
-            onLocationSelect({ 
-              lat: place.geometry.location.lat(), 
-              lng: place.geometry.location.lng(), 
-              address: prediction.description 
-            });
-          } else {
-            console.error('PlacesService getDetails failed:', status);
-          }
-        }
-      );
-    } else {
-      setIsGeocoding(false);
-    }
+    onLocationSelect({
+      lat: prediction.lat,
+      lng: prediction.lng,
+      address: prediction.description,
+    });
   };
 
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation || !geocoder) return;
+  const handleUseCurrentLocation = async () => {
+    if (!navigator.geolocation) return;
     setIsGeocoding(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude: lat, longitude: lng } = position.coords;
         try {
-          const result = await geocoder.geocode({ location: { lat, lng } });
-          if (result.results[0]) {
-            const address = result.results[0].formatted_address;
-            onChange(address);
-            onLocationSelect({ lat, lng, address });
-          }
-        } catch { onChange(`${lat.toFixed(4)}, ${lng.toFixed(4)}`); onLocationSelect({ lat, lng, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }); }
-        finally { setIsGeocoding(false); }
+          const address = await reverseGeocode(lat, lng);
+          onChange(address);
+          onLocationSelect({ lat, lng, address });
+        } catch {
+          const fallback = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          onChange(fallback);
+          onLocationSelect({ lat, lng, address: fallback });
+        } finally {
+          setIsGeocoding(false);
+        }
       },
       () => { setIsGeocoding(false); },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 },
     );
   };
 

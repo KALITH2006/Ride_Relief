@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Car, Wrench, MapPin, RefreshCw, Filter } from 'lucide-react';
-import GoogleMap, { type MapMarkerData } from '@/components/maps/GoogleMap';
+import LeafletMap, { type MapMarkerData } from '@/components/maps/LeafletMap';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import type { LiveLocation, SOSRequest } from '@/lib/types';
@@ -128,7 +128,7 @@ export default function AdminMapPage() {
 
       {/* Map */}
       <Card variant="elevated" className="p-0 overflow-hidden">
-        <GoogleMap
+        <LeafletMap
           markers={markers}
           fitMarkers
           height="550px"

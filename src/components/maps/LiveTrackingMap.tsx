@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Phone, Navigation, Clock, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
-import GoogleMap, { type MapMarkerData } from '@/components/maps/GoogleMap';
+import LeafletMap, { type MapMarkerData } from '@/components/maps/LeafletMap';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -60,26 +60,20 @@ export default function LiveTrackingMap({
     }
   }, [trackingRoom, finalDriverLocation, customerLocation]);
 
-  // Handlers for Google Maps Directions API callback
+  // OSRM route callback
   const handleRouteCalculated = (distText: string, durText: string, distValue: number, durValue: number, polyline: string) => {
-    // Only the driver should calculate and broadcast the ETA to the room
     if (profile?.role === 'driver' && status !== 'completed') {
       const distanceKm = distValue / 1000;
-      // Get AI buffered ETA based on distance and current hour
       const etaObj = predictETA({
         distanceKm,
-        weatherCondition: 'clear', // real app: fetch from weather API
-        trafficLevel: 'moderate', // real app: could determine from durValue vs normal distance
+        weatherCondition: 'clear',
+        trafficLevel: 'moderate',
         timeOfDay: new Date().getHours()
       });
       
       const newEta = etaObj.minutes.toString();
-      
-      // Update local state if not present in tracking room (or just broadcast)
       setEta(etaObj.minutes);
       setDistance(distText);
-      
-      // Update global tracking room so customer sees it
       updateETA(newEta, distText, polyline);
     }
   };
@@ -127,7 +121,7 @@ export default function LiveTrackingMap({
     <div className="space-y-4">
       {/* Map */}
       <div className="relative">
-        <GoogleMap
+        <LeafletMap
           markers={markers}
           fitMarkers={markers.length > 1}
           height="350px"
@@ -136,12 +130,11 @@ export default function LiveTrackingMap({
           routeDestination={customerLocation}
           onRouteCalculated={handleRouteCalculated}
           className="rounded-2xl overflow-hidden"
-          encodedPolyline={trackingRoom?.routePolyline}
         />
         {/* ETA Overlay */}
         {eta !== null && status !== 'completed' && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-            className="absolute top-3 left-3 glass rounded-xl px-4 py-2">
+            className="absolute top-3 left-3 glass rounded-xl px-4 py-2" style={{ zIndex: 1000 }}>
             <div className="flex items-center gap-2">
               <Clock size={16} className="text-primary" />
               <div>
@@ -172,7 +165,7 @@ export default function LiveTrackingMap({
               </a>
             )}
             {finalDriverLocation && (
-              <a href={`https://www.google.com/maps/dir/?api=1&destination=${customerLocation.lat},${customerLocation.lng}&origin=${finalDriverLocation.lat},${finalDriverLocation.lng}`} target="_blank" rel="noopener noreferrer">
+              <a href={`https://www.openstreetmap.org/directions?engine=osrm_car&route=${finalDriverLocation.lat},${finalDriverLocation.lng};${customerLocation.lat},${customerLocation.lng}`} target="_blank" rel="noopener noreferrer">
                 <Button size="sm"><Navigation size={14} /> Navigate</Button>
               </a>
             )}
