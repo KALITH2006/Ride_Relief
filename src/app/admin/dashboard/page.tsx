@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { useState } from 'react';
 import {
   Users, CalendarCheck, IndianRupee, Car, AlertTriangle,
   TrendingUp, ArrowUpRight, ArrowDownRight, Activity
@@ -8,6 +9,9 @@ import {
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
+import { createBooking, createSOSRequest } from '@/lib/firestore';
+import type { ServiceType } from '@/lib/types';
+import toast from 'react-hot-toast';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -57,13 +61,96 @@ const kpiCards = [
   { label: 'Completion Rate', value: '94.2%', change: '+1.1%', up: true, icon: Activity, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
 ];
 
+const INDIAN_NAMES = ['Aarav Patel', 'Priya Sharma', 'Rajesh Kumar', 'Deepa M.', 'Arun V.', 'Kavita Singh', 'Suresh Menon', 'Anjali D.'];
+const CHENNAI_LOCATIONS = [
+  { address: 'Anna Nagar, Chennai', lat: 13.0878, lng: 80.2206 },
+  { address: 'T Nagar, Chennai', lat: 13.0418, lng: 80.2341 },
+  { address: 'Velachery, Chennai', lat: 12.9716, lng: 80.2189 },
+  { address: 'Adyar, Chennai', lat: 13.0012, lng: 80.2565 },
+  { address: 'OMR, Chennai', lat: 12.9234, lng: 80.2301 },
+  { address: 'Tambaram, Chennai', lat: 12.9249, lng: 80.1000 },
+];
+
 export default function AdminDashboard() {
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  const triggerSimulation = async () => {
+    setIsSimulating(true);
+    toast.loading('Simulating live customer requests...', { id: 'sim' });
+    
+    // Generate 1-3 random requests
+    const numRequests = Math.floor(Math.random() * 3) + 1;
+    
+    for (let i = 0; i < numRequests; i++) {
+      const name = INDIAN_NAMES[Math.floor(Math.random() * INDIAN_NAMES.length)];
+      const pickup = CHENNAI_LOCATIONS[Math.floor(Math.random() * CHENNAI_LOCATIONS.length)];
+      let drop = CHENNAI_LOCATIONS[Math.floor(Math.random() * CHENNAI_LOCATIONS.length)];
+      while (drop.address === pickup.address) {
+        drop = CHENNAI_LOCATIONS[Math.floor(Math.random() * CHENNAI_LOCATIONS.length)];
+      }
+
+      const services: ServiceType[] = ['acting_driver', 'rental', 'mechanic', 'emergency'];
+      const serviceType = services[Math.floor(Math.random() * services.length)];
+      
+      const isSOS = serviceType === 'emergency';
+      
+      const booking = {
+        userId: `mock_user_${Math.floor(Math.random() * 10000)}`,
+        userName: name,
+        customerPhone: '+919876543210',
+        driverId: null,
+        serviceType: serviceType === 'emergency' ? 'acting_driver' : serviceType, // standardize
+        status: 'requested' as const,
+        pickup,
+        drop: serviceType === 'mechanic' ? null : drop,
+        amount: Math.floor(Math.random() * 500) + 150,
+        paymentStatus: 'pending' as const,
+        isSOS,
+        priority: isSOS ? 'emergency' as const : 'normal' as const,
+        rating: null,
+        notes: isSOS ? 'EMERGENCY: Urgent help needed' : 'Please come fast',
+        createdAt: new Date(),
+        otp: Math.floor(100000 + Math.random() * 900000).toString(),
+        city: 'Chennai'
+      };
+
+      try {
+        const bookingId = await createBooking(booking);
+        if (isSOS) {
+          await createSOSRequest({
+            customerId: booking.userId,
+            bookingId,
+            serviceType: 'SOS',
+            location: pickup,
+            status: 'searching',
+            priority: 'high'
+          });
+        }
+      } catch (e) {
+        console.error('Error simulating booking:', e);
+      }
+    }
+
+    toast.success(`Successfully dispatched ${numRequests} new live requests!`, { id: 'sim' });
+    setIsSimulating(false);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted mt-1">Welcome to RideRelief Admin Panel</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted mt-1">Welcome to RideRelief Admin Panel</p>
+        </div>
+        <button 
+          onClick={triggerSimulation}
+          disabled={isSimulating}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 disabled:opacity-50"
+        >
+          <Activity size={16} className={isSimulating ? "animate-spin" : ""} />
+          {isSimulating ? "Simulating..." : "Simulate Live Traffic"}
+        </button>
       </div>
 
       {/* KPI Cards */}
